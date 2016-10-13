@@ -1,0 +1,7 @@
+[package]
+name = "tiered-map"
+version = "0.1.0"
+authors = ["BurntPizza <xburntpizza@gmail.com>"]
+license = "MIT"
+
+[dependencies]
