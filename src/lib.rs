@@ -46,7 +46,10 @@ impl<'a, K, V, H> TieredMap<'a, K, V, H>
     }
 
     pub fn with_capacity_and_hasher(capacity: usize, hash_builder: H) -> Self {
-        tm!(None, HashMap::with_capacity_and_hasher(capacity, hash_builder), 0, 0)
+        tm!(None,
+            HashMap::with_capacity_and_hasher(capacity, hash_builder),
+            0,
+            0)
     }
 
     pub fn hasher(&self) -> &H {
@@ -69,20 +72,21 @@ impl<'a, K, V, H> TieredMap<'a, K, V, H>
         self.parent_size + self.map.len()
     }
 
-    pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V> 
+    pub fn get<Q: ?Sized>(&self, k: &Q) -> Option<&V>
         where K: Borrow<Q>,
               Q: Hash + Eq
     {
         self.map.get(k).or_else(|| self.parent.and_then(|parent| parent.get(k)))
     }
 
-    pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool 
+    pub fn contains_key<Q: ?Sized>(&self, k: &Q) -> bool
         where K: Borrow<Q>,
               Q: Hash + Eq
     {
-        self.map.contains_key(k) || self.parent.map_or_else(|| false, |parent| parent.contains_key(k))
+        self.map.contains_key(k) ||
+        self.parent.map_or_else(|| false, |parent| parent.contains_key(k))
     }
-    
+
     pub fn insert(&mut self, k: K, v: V) -> Option<V> {
         self.map.insert(k, v)
     }
@@ -105,11 +109,14 @@ impl<'a, K, V, H> TieredMap<'a, K, V, H>
         // skip empty tiers
         if let Some(p) = self.parent {
             if self.map.is_empty() {
-                return p.new_scope()
+                return p.new_scope();
             }
         }
 
-        tm!(Some(self), HashMap::with_hasher(self.map.hasher().clone()), self.capacity(), self.len())
+        tm!(Some(self),
+            HashMap::with_hasher(self.map.hasher().clone()),
+            self.capacity(),
+            self.len())
     }
 }
 
@@ -138,7 +145,7 @@ impl<'a, K, V, H> Iterator for Iter<'a, K, V, H>
                     }
                 }
             }
-            s => s
+            s => s,
         }
     }
 
@@ -153,11 +160,14 @@ impl<'a, K, V, H> Clone for TieredMap<'a, K, V, H>
           H: BuildHasher + Clone
 {
     fn clone(&self) -> Self {
-        tm!(self.parent.clone(), self.map.clone(), self.capacity(), self.len())
+        tm!(self.parent.clone(),
+            self.map.clone(),
+            self.capacity(),
+            self.len())
     }
 }
 
-impl<'a, K, V, H> Debug for TieredMap<'a, K, V, H> 
+impl<'a, K, V, H> Debug for TieredMap<'a, K, V, H>
     where K: Eq + Hash + Debug,
           V: Debug,
           H: BuildHasher
@@ -167,18 +177,18 @@ impl<'a, K, V, H> Debug for TieredMap<'a, K, V, H>
     }
 }
 
-impl<'a, K, V, H> PartialEq for TieredMap<'a, K, V, H> 
+impl<'a, K, V, H> PartialEq for TieredMap<'a, K, V, H>
     where K: Eq + Hash,
           V: PartialEq,
           H: BuildHasher
 {
     fn eq(&self, other: &Self) -> bool {
-        self.len() == other.len()
-            && self.iter().all(|(k, v)| other.get(k).map_or(false, |ov| *v == *ov))
+        self.len() == other.len() &&
+        self.iter().all(|(k, v)| other.get(k).map_or(false, |ov| *v == *ov))
     }
 }
 
-impl<'a, K, V, H> Default for TieredMap<'a, K, V, H> 
+impl<'a, K, V, H> Default for TieredMap<'a, K, V, H>
     where K: Eq + Hash,
           H: BuildHasher + Default
 {
@@ -187,7 +197,7 @@ impl<'a, K, V, H> Default for TieredMap<'a, K, V, H>
     }
 }
 
-impl<'a, K, V, H, Q> Index<&'a Q> for TieredMap<'a, K, V, H> 
+impl<'a, K, V, H, Q> Index<&'a Q> for TieredMap<'a, K, V, H>
     where K: Eq + Hash + Borrow<Q>,
           H: BuildHasher,
           Q: Eq + Hash
@@ -201,11 +211,12 @@ impl<'a, K, V, H, Q> Index<&'a Q> for TieredMap<'a, K, V, H>
 }
 
 
-impl<'a, K, V, H> Eq for TieredMap<'a, K, V, H> 
+impl<'a, K, V, H> Eq for TieredMap<'a, K, V, H>
     where K: Eq + Hash,
           V: Eq,
           H: BuildHasher
-{}
+{
+}
 
 #[cfg(test)]
 mod tests {
@@ -218,23 +229,23 @@ mod tests {
         let mut tm1 = TieredMap::new();
         {
             let mut tm2 = tm1.new_scope();
-            
+
             tm2.insert("a", 0);
-            
+
             assert_eq!(tm2.get("a"), Some(&0));
             assert_eq!(tm1.get("a"), None);
         }
 
         tm1.insert("a", 1);
-        
+
         let mut tm2 = tm1.new_scope();
-        
+
         tm2.insert("b", 2);
 
         assert_eq!(tm2.get("a"), Some(&1));
-        
+
         let mut tm3 = tm2.new_scope();
-        
+
         tm3.insert("a", 3);
 
         assert_eq!(tm2.get("a"), Some(&1));
@@ -246,7 +257,7 @@ mod tests {
         let mut tm = TieredMap::new();
         let mut hm = HashMap::new();
 
-        let entries  = &[("a", 0u8), ("d", 3), ("c", 2), ("b", 1)];
+        let entries = &[("a", 0u8), ("d", 3), ("c", 2), ("b", 1)];
         let entries2 = &[("x", 23u8), ("y", 24), ("z", 25)];
 
         for &(k, v) in entries {
@@ -261,6 +272,7 @@ mod tests {
             hm.insert(k, v);
         }
 
-        assert_eq!(hm.iter().collect::<HashSet<_>>(), tm2.iter().collect::<HashSet<_>>());
+        assert_eq!(hm.iter().collect::<HashSet<_>>(),
+                   tm2.iter().collect::<HashSet<_>>());
     }
 }
