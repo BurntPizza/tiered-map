@@ -97,6 +97,23 @@ impl<'a, K, V, H> TieredMap<'a, K, V, H>
     // TODO: iterators, Debug, Eq, etc.
 }
 
+impl<'a, K, V, H> TieredMap<'a, K, V, H>
+    where K: Eq + Hash,
+          H: BuildHasher + Clone
+{
+    pub fn new_scope(&self) -> TieredMap<K, V, H> {
+        // skip empty tiers
+        if let Some(p) = self.parent {
+            if self.map.is_empty() {
+                return p.new_scope()
+            }
+        }
+
+        tm!(Some(self), HashMap::with_hasher(self.map.hasher().clone()), self.capacity(), self.len())
+    }
+}
+
+#[derive(Clone)]
 pub struct Iter<'a, K: 'a, V: 'a, H: 'a> {
     map: &'a TieredMap<'a, K, V, H>,
     iter: hash_map::Iter<'a, K, V>,
@@ -127,32 +144,6 @@ impl<'a, K, V, H> Iterator for Iter<'a, K, V, H>
 
     fn size_hint(&self) -> (usize, Option<usize>) {
         (self.map.len(), Some(self.map.len()))
-    }
-}
-
-// TODO: is this necessary?
-impl<'a, K, V, H> Clone for Iter<'a, K, V, H> {
-    fn clone(&self) -> Self {
-        Iter {
-            map: self.map.clone(),
-            iter: self.iter.clone(),
-        }
-    }
-}
-
-impl<'a, K, V, H> TieredMap<'a, K, V, H>
-    where K: Eq + Hash,
-          H: BuildHasher + Clone
-{
-    pub fn new_scope(&self) -> TieredMap<K, V, H> {
-        // skip empty tiers
-        if let Some(p) = self.parent {
-            if self.map.is_empty() {
-                return p.new_scope()
-            }
-        }
-
-        tm!(Some(self), HashMap::with_hasher(self.map.hasher().clone()), self.capacity(), self.len())
     }
 }
 
