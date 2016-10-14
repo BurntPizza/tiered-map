@@ -6,6 +6,7 @@ use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::collections::hash_map::{self, RandomState};
 use std::fmt::{self, Debug, Formatter};
+use std::iter::FromIterator;
 
 pub struct TieredMap<'a, K: 'a, V: 'a, H: 'a = RandomState> {
     parent: Option<&'a TieredMap<'a, K, V, H>>,
@@ -170,7 +171,7 @@ impl<'a, K, V, H> IntoIterator for &'a TieredMap<'a, K, V, H>
 {
     type Item = (&'a K, &'a V);
     type IntoIter = Iter<'a, K, V, H>;
-    
+
     fn into_iter(self) -> Self::IntoIter {
         self.iter()
     }
@@ -240,9 +241,48 @@ impl<'a, K, V, H> Eq for TieredMap<'a, K, V, H>
 {
 }
 
+impl<'a, K, V, H> FromIterator<(K, V)> for TieredMap<'a, K, V, H>
+    where K: Eq + Hash,
+          H: BuildHasher + Default
+{
+    fn from_iter<T>(iter: T) -> Self
+        where T: IntoIterator<Item = (K, V)>
+    {
+        tm!(None, HashMap::from_iter(iter), 0, 0)
+    }
+}
+
+impl<'a, K, V, H> Extend<(K, V)> for TieredMap<'a, K, V, H>
+    where K: Eq + Hash,
+          H: BuildHasher
+{
+    fn extend<T>(&mut self, iter: T)
+        where T: IntoIterator<Item = (K, V)>
+    {
+        for (k, v) in iter {
+            self.insert(k, v);
+        }
+    }
+}
+
+impl<'a, K, V, H> Extend<(&'a K, &'a V)> for TieredMap<'a, K, V, H>
+    where K: Eq + Hash + Copy,
+          V: Copy,
+          H: BuildHasher
+{
+    fn extend<T>(&mut self, iter: T)
+        where T: IntoIterator<Item = (&'a K, &'a V)>
+    {
+        self.extend(iter.into_iter().map(|(&k, &v)| (k, v)));
+    }
+}
+
+// TODO: quickcheck?
 #[cfg(test)]
 mod tests {
     use std::collections::{HashSet, HashMap};
+    use std::collections::hash_map::RandomState;
+    use std::iter::FromIterator;
 
     use super::TieredMap;
 
@@ -310,5 +350,16 @@ mod tests {
 
         assert_eq!(entries.len(), tm.iter().len());
         assert_eq!(entries.len(), tm.iter().collect::<Vec<_>>().capacity());
+    }
+
+    #[test]
+    fn from_iter() {
+        let entries = vec![("a", 0u8), ("d", 3), ("c", 2), ("b", 1), ("z", 4)];
+        let len = entries.len();
+
+        // TODO: fix inference
+        let tm = TieredMap::<_, _, RandomState>::from_iter(entries);
+
+        assert_eq!(len, tm.len());
     }
 }
