@@ -336,20 +336,22 @@ mod tests {
 
         assert_eq!(hm.iter().collect::<HashSet<_>>(),
                    tm2.iter().collect::<HashSet<_>>());
-    }
 
-    #[test]
-    fn size_hints() {
-        let mut tm = TieredMap::new();
+        let mut iter1 = hm.iter();
+        let mut iter2 = tm2.iter();
 
-        let entries = &[("a", 0u8), ("d", 3), ("c", 2), ("b", 1), ("z", 4)];
+        let (mut a, mut b);
 
-        for &(k, v) in entries {
-            tm.insert(k, v);
+        loop {
+            assert_eq!(iter1.size_hint(), iter2.size_hint());
+
+            a = iter1.next();
+            b = iter2.next();
+
+            if a.is_none() || b.is_none() {
+                break;
+            }
         }
-
-        assert_eq!(entries.len(), tm.iter().len());
-        assert_eq!(entries.len(), tm.iter().collect::<Vec<_>>().capacity());
     }
 
     #[test]
