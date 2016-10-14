@@ -97,8 +97,6 @@ impl<'a, K, V, H> TieredMap<'a, K, V, H>
             iter: self.map.iter(),
         }
     }
-
-    // TODO: iterators, Debug, Eq, etc.
 }
 
 impl<'a, K, V, H> TieredMap<'a, K, V, H>
@@ -149,8 +147,32 @@ impl<'a, K, V, H> Iterator for Iter<'a, K, V, H>
         }
     }
 
+    #[inline]
     fn size_hint(&self) -> (usize, Option<usize>) {
-        (self.map.len(), Some(self.map.len()))
+        let l = self.map.parent.map_or(0, |t| t.len()) + self.iter.len();
+        (l, Some(l))
+    }
+}
+
+impl<'a, K, V, H> ExactSizeIterator for Iter<'a, K, V, H>
+    where K: Eq + Hash,
+          H: BuildHasher
+{
+    #[inline]
+    fn len(&self) -> usize {
+        self.size_hint().0
+    }
+}
+
+impl<'a, K, V, H> IntoIterator for &'a TieredMap<'a, K, V, H>
+    where K: Eq + Hash,
+          H: BuildHasher
+{
+    type Item = (&'a K, &'a V);
+    type IntoIter = Iter<'a, K, V, H>;
+    
+    fn into_iter(self) -> Self::IntoIter {
+        self.iter()
     }
 }
 
@@ -274,5 +296,19 @@ mod tests {
 
         assert_eq!(hm.iter().collect::<HashSet<_>>(),
                    tm2.iter().collect::<HashSet<_>>());
+    }
+
+    #[test]
+    fn size_hints() {
+        let mut tm = TieredMap::new();
+
+        let entries = &[("a", 0u8), ("d", 3), ("c", 2), ("b", 1), ("z", 4)];
+
+        for &(k, v) in entries {
+            tm.insert(k, v);
+        }
+
+        assert_eq!(entries.len(), tm.iter().len());
+        assert_eq!(entries.len(), tm.iter().collect::<Vec<_>>().capacity());
     }
 }
