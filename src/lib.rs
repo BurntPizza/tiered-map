@@ -1,10 +1,13 @@
 
+use std::ops::Index;
+use std::cmp::{PartialEq, Eq};
 use std::hash::{Hash, BuildHasher};
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::collections::hash_map::RandomState;
+use std::collections::hash_map::{self, RandomState};
+use std::fmt::{self, Debug, Formatter};
 
-pub struct TieredMap<'a, K: 'a, V: 'a, H: 'a> {
+pub struct TieredMap<'a, K: 'a, V: 'a, H: 'a = RandomState> {
     parent: Option<&'a TieredMap<'a, K, V, H>>,
     map: HashMap<K, V, H>,
     parent_cap: usize,
@@ -22,7 +25,9 @@ macro_rules! tm {
     }
 }
 
-impl<'a, K: Eq + Hash, V> TieredMap<'a, K, V, RandomState> {
+impl<'a, K, V> TieredMap<'a, K, V, RandomState>
+    where K: Eq + Hash
+{
     pub fn new() -> Self {
         tm!(None, HashMap::new(), 0, 0)
     }
@@ -32,7 +37,10 @@ impl<'a, K: Eq + Hash, V> TieredMap<'a, K, V, RandomState> {
     }
 }
 
-impl<'a, K: Eq + Hash, V, H: BuildHasher> TieredMap<'a, K, V, H> {
+impl<'a, K, V, H> TieredMap<'a, K, V, H>
+    where K: Eq + Hash,
+          H: BuildHasher
+{
     pub fn with_hasher(hash_builder: H) -> Self {
         tm!(None, HashMap::with_hasher(hash_builder), 0, 0)
     }
@@ -79,10 +87,63 @@ impl<'a, K: Eq + Hash, V, H: BuildHasher> TieredMap<'a, K, V, H> {
         self.map.insert(k, v)
     }
 
+    pub fn iter(&self) -> Iter<K, V, H> {
+        Iter {
+            map: self,
+            iter: self.map.iter(),
+        }
+    }
+
     // TODO: iterators, Debug, Eq, etc.
 }
 
-impl<'a, K: Hash + Eq, V, H: BuildHasher + Clone> TieredMap<'a, K, V, H> {
+pub struct Iter<'a, K: 'a, V: 'a, H: 'a> {
+    map: &'a TieredMap<'a, K, V, H>,
+    iter: hash_map::Iter<'a, K, V>,
+}
+
+impl<'a, K, V, H> Iterator for Iter<'a, K, V, H>
+    where K: Eq + Hash,
+          H: BuildHasher
+{
+    type Item = (&'a K, &'a V);
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match self.iter.next() {
+            None => {
+                // current iter is exhausted, move to next tier
+                match self.map.parent {
+                    None => None, // finished
+                    Some(p) => {
+                        self.map = p;
+                        self.iter = p.map.iter();
+                        self.iter.next()
+                    }
+                }
+            }
+            s => s
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        (self.map.len(), Some(self.map.len()))
+    }
+}
+
+// TODO: is this necessary?
+impl<'a, K, V, H> Clone for Iter<'a, K, V, H> {
+    fn clone(&self) -> Self {
+        Iter {
+            map: self.map.clone(),
+            iter: self.iter.clone(),
+        }
+    }
+}
+
+impl<'a, K, V, H> TieredMap<'a, K, V, H>
+    where K: Eq + Hash,
+          H: BuildHasher + Clone
+{
     pub fn new_scope(&self) -> TieredMap<K, V, H> {
         // skip empty tiers
         if let Some(p) = self.parent {
@@ -95,8 +156,70 @@ impl<'a, K: Hash + Eq, V, H: BuildHasher + Clone> TieredMap<'a, K, V, H> {
     }
 }
 
+impl<'a, K, V, H> Clone for TieredMap<'a, K, V, H>
+    where K: Eq + Hash + Clone,
+          V: Clone,
+          H: BuildHasher + Clone
+{
+    fn clone(&self) -> Self {
+        tm!(self.parent.clone(), self.map.clone(), self.capacity(), self.len())
+    }
+}
+
+impl<'a, K, V, H> Debug for TieredMap<'a, K, V, H> 
+    where K: Eq + Hash + Debug,
+          V: Debug,
+          H: BuildHasher
+{
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        f.debug_map().entries(self.iter()).finish()
+    }
+}
+
+impl<'a, K, V, H> PartialEq for TieredMap<'a, K, V, H> 
+    where K: Eq + Hash,
+          V: PartialEq,
+          H: BuildHasher
+{
+    fn eq(&self, other: &Self) -> bool {
+        self.len() == other.len()
+            && self.iter().all(|(k, v)| other.get(k).map_or(false, |ov| *v == *ov))
+    }
+}
+
+impl<'a, K, V, H> Default for TieredMap<'a, K, V, H> 
+    where K: Eq + Hash,
+          H: BuildHasher + Default
+{
+    fn default() -> Self {
+        Self::with_hasher(Default::default())
+    }
+}
+
+impl<'a, K, V, H, Q> Index<&'a Q> for TieredMap<'a, K, V, H> 
+    where K: Eq + Hash + Borrow<Q>,
+          H: BuildHasher,
+          Q: Eq + Hash
+{
+    type Output = V;
+
+    #[inline]
+    fn index(&self, index: &Q) -> &Self::Output {
+        self.get(index).expect("no entry found for key")
+    }
+}
+
+
+impl<'a, K, V, H> Eq for TieredMap<'a, K, V, H> 
+    where K: Eq + Hash,
+          V: Eq,
+          H: BuildHasher
+{}
+
 #[cfg(test)]
 mod tests {
+    use std::collections::{HashSet, HashMap};
+
     use super::TieredMap;
 
     #[test]
@@ -125,5 +248,28 @@ mod tests {
 
         assert_eq!(tm2.get("a"), Some(&1));
         assert_eq!(tm3.get("a"), Some(&3));
+    }
+
+    #[test]
+    fn iter() {
+        let mut tm = TieredMap::new();
+        let mut hm = HashMap::new();
+
+        let entries  = &[("a", 0u8), ("d", 3), ("c", 2), ("b", 1)];
+        let entries2 = &[("x", 23u8), ("y", 24), ("z", 25)];
+
+        for &(k, v) in entries {
+            tm.insert(k, v);
+            hm.insert(k, v);
+        }
+
+        let mut tm2 = tm.new_scope();
+
+        for &(k, v) in entries2 {
+            tm2.insert(k, v);
+            hm.insert(k, v);
+        }
+
+        assert_eq!(hm.iter().collect::<HashSet<_>>(), tm2.iter().collect::<HashSet<_>>());
     }
 }
